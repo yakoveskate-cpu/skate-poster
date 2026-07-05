@@ -1,0 +1,9 @@
+{
+  "name": "skate-poster",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "post": "node src/post.ts",
+    "dry": "DRY_RUN=1 node src/post.ts"
+  }
+}

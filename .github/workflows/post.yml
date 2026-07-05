@@ -1,0 +1,40 @@
+name: post-trial-reel
+
+on:
+  schedule:
+    # IL times: 01,02,03,04 (US evening) + 11,16,19:30,21:30,23:30. UTC = IL-3 (summer).
+    - cron: "0 22 * * *"
+    - cron: "0 23 * * *"
+    - cron: "0 0 * * *"
+    - cron: "0 1 * * *"
+    - cron: "0 8 * * *"
+    - cron: "0 13 * * *"
+    - cron: "30 16 * * *"
+    - cron: "30 18 * * *"
+    - cron: "30 20 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (1 = don't post)"
+        default: "0"
+
+concurrency:
+  group: poster
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund @vercel/blob
+      - run: node post-cloud.mjs
+        env:
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || '0' }}

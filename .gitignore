@@ -1,0 +1,6 @@
+node_modules/
+music/
+posts.log
+launchd.log
+.vercel/
+.env*
