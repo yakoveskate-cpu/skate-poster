@@ -72,15 +72,43 @@ async function graph(path, params, token) {
   return j;
 }
 
-async function alreadyPublished(caption, token) {
+// Lost-response recovery: a pending marker is written before each publish and
+// cleared after success. If a marker survives, check whether any media appeared
+// within 25min of that attempt. Caption matching is unsafe (pool collisions).
+async function pendingMarker() {
+  const { blobs } = await list({ prefix: "state/pending.json" });
+  if (!blobs.length) return null;
+  try {
+    return await fetch(blobs[0].url + "?ts=" + Date.now()).then((r) => r.json());
+  } catch {
+    return null;
+  }
+}
+
+async function setPending(pathname) {
+  await put("state/pending.json", JSON.stringify({ pathname, time: Date.now() }), {
+    access: "public",
+    addRandomSuffix: false,
+    allowOverwrite: true,
+  });
+}
+
+async function clearPending() {
+  const { blobs } = await list({ prefix: "state/pending.json" });
+  for (const b of blobs) await del(b.url);
+}
+
+async function attemptSucceeded(attemptMs, token) {
   try {
     const res = await fetch(
-      `https://graph.instagram.com/v21.0/me/media?fields=caption,timestamp&limit=5&access_token=${token}`
+      `https://graph.instagram.com/v21.0/me/media?fields=timestamp&limit=5&access_token=${token}`
     );
     const j = await res.json();
     if (!res.ok || !j.data) return false;
-    const cutoff = Date.now() - 12 * 3600_000;
-    return j.data.some((m) => m.caption === caption && new Date(m.timestamp).getTime() > cutoff);
+    return j.data.some((m) => {
+      const t = new Date(m.timestamp).getTime();
+      return t >= attemptMs - 2 * 60_000 && t <= attemptMs + 25 * 60_000;
+    });
   } catch {
     return false;
   }
@@ -137,18 +165,23 @@ async function main() {
     }
   }
 
-  let clip = queue[0];
-  let caption = await captionFor(clip.pathname);
-
-  while (clip && !DRY_RUN && (await alreadyPublished(caption, token))) {
-    console.log(`${clip.pathname} already published (recovered lost response), moving to done`);
-    await copy(clip.url, clip.pathname.replace(/^queue\//, "done/"), { access: "public", addRandomSuffix: false });
-    await del(clip.url);
-    queue = await queueBlobs();
-    clip = queue[0];
-    if (!clip) return;
-    caption = await captionFor(clip.pathname);
+  const pending = await pendingMarker();
+  if (pending && !DRY_RUN) {
+    if (await attemptSucceeded(pending.time, token)) {
+      console.log(`${pending.pathname} was published on a lost-response attempt, moving to done`);
+      const { blobs } = await list({ prefix: pending.pathname });
+      for (const b of blobs) {
+        await copy(b.url, b.pathname.replace(/^queue\//, "done/"), { access: "public", addRandomSuffix: false });
+        await del(b.url);
+      }
+      queue = await queueBlobs();
+    }
+    await clearPending();
+    if (!queue.length) return;
   }
+
+  const clip = queue[0];
+  const caption = await captionFor(clip.pathname);
 
   if (DRY_RUN) {
     console.log(`DRY RUN: would post ${clip.pathname} as TRIAL Reel with caption: ${caption}`);
@@ -162,7 +195,9 @@ async function main() {
     token
   );
   await waitForContainer(container.id, token);
+  await setPending(clip.pathname);
   const published = await graph(`${IG_USER_ID}/media_publish`, { creation_id: container.id }, token);
+  await clearPending();
   console.log(`published ${clip.pathname} -> media id ${published.id}`);
 
   await copy(clip.url, clip.pathname.replace(/^queue\//, "done/"), { access: "public", addRandomSuffix: false });

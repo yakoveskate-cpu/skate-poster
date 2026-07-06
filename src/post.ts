@@ -167,20 +167,39 @@ async function refreshToken(env: Record<string, string>) {
 }
 
 // A "fetch failed" on publish can mean the post actually went through and only
-// the response was lost (caused a double post on 2026-07-05). Before posting,
-// check if this exact caption was already published in the last 12h.
-async function alreadyPublished(caption: string, token: string): Promise<boolean> {
+// the response was lost (caused a double post on 2026-07-05). Recovery check:
+// if posts.log shows a failed attempt for THIS file, ask IG whether any media
+// appeared within 25min of that attempt. Caption matching is not safe here —
+// the small caption pool collides across clips (false-skipped IMG_8842 on 07-06).
+function lastFailedAttempt(file: string): number | null {
+  try {
+    const lines = readFileSync(LOG, "utf8").trim().split("\n");
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (lines[i].includes(`published ${file}`)) return null;
+      if (lines[i].includes(`posting ${file}`)) {
+        const failed = lines.slice(i + 1).some((l) => l.includes("ERROR"));
+        if (!failed) return null;
+        const m = lines[i].match(/^\[([^\]]+)\]/);
+        return m ? new Date(m[1]).getTime() : null;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+async function alreadyPublished(file: string, token: string): Promise<boolean> {
+  const attempt = lastFailedAttempt(file);
+  if (!attempt) return false;
   try {
     const res = await fetch(
-      `https://graph.instagram.com/v21.0/me/media?fields=caption,timestamp&limit=5&access_token=${token}`
+      `https://graph.instagram.com/v21.0/me/media?fields=timestamp&limit=5&access_token=${token}`
     );
     const json = await res.json();
     if (!res.ok || !json.data) return false;
-    const cutoff = Date.now() - 12 * 3600_000;
-    return json.data.some(
-      (m: { caption?: string; timestamp: string }) =>
-        m.caption === caption && new Date(m.timestamp).getTime() > cutoff
-    );
+    return json.data.some((m: { timestamp: string }) => {
+      const t = new Date(m.timestamp).getTime();
+      return t >= attempt - 2 * 60_000 && t <= attempt + 25 * 60_000;
+    });
   } catch {
     return false;
   }
@@ -209,7 +228,7 @@ async function main() {
   let caption = captionFor(file);
 
   if (!dryRun && env.IG_ACCESS_TOKEN) {
-    while (file && (await alreadyPublished(caption, env.IG_ACCESS_TOKEN))) {
+    while (file && (await alreadyPublished(file, env.IG_ACCESS_TOKEN))) {
       log(`${file} was already published (recovered lost response), moving to done`);
       renameSync(filePath, join(DONE, file));
       const sc = join(QUEUE, basename(file, extname(file)) + ".txt");
