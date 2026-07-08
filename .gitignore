@@ -4,3 +4,8 @@ posts.log
 launchd.log
 .vercel/
 .env*
+staged/
+topup-work/
+topup.log
+topup-launchd.log
+hookpngs/
