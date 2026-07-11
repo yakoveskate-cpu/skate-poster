@@ -156,13 +156,10 @@ async function main() {
 
   let queue = await queueBlobs();
   if (!queue.length) {
-    const n = await recycle();
-    console.log(`queue empty, recycled ${n} clips from done/`);
-    queue = await queueBlobs();
-    if (!queue.length) {
-      console.log("queue empty, nothing to post");
-      return;
-    }
+    // NEVER recycle: reposting an already-posted file gets duplicate-flagged
+    // by Instagram and buried at ~1 view (learned 2026-07-11). Skip instead.
+    console.log("queue empty, skipping post (no recycling, fresh content only)");
+    return;
   }
 
   const pending = await pendingMarker();
