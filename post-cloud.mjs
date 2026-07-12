@@ -197,14 +197,11 @@ async function main() {
   await clearPending();
   console.log(`published ${clip.pathname} -> media id ${published.id}`);
 
-  await copy(clip.url, clip.pathname.replace(/^queue\//, "done/"), { access: "public", addRandomSuffix: false });
+  // delete posted blob outright (no done/ archive: storage-capped, and we never recycle)
   await del(clip.url);
   const sidecar = clip.pathname.replace(/\.[^.]+$/, ".txt");
   const { blobs: sc } = await list({ prefix: sidecar });
-  if (sc.length) {
-    await copy(sc[0].url, sidecar.replace(/^queue\//, "done/"), { access: "public", addRandomSuffix: false });
-    await del(sc[0].url);
-  }
+  if (sc.length) await del(sc[0].url);
 
   const left = (await queueBlobs()).length;
   console.log(`done, ${left} clips left in queue`);
