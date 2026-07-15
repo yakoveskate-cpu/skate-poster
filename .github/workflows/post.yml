@@ -2,27 +2,12 @@ name: post-trial-reel
 
 on:
   schedule:
-    # 20/day, dense on US evening (22:00-03:30 UTC = 6-11:30pm ET). UTC = IL-3 (summer).
-    - cron: "0 22 * * *"
-    - cron: "30 22 * * *"
+    # 5/day only — account is throttled, keeping volume low + fresh-only. UTC=IL-3.
     - cron: "0 23 * * *"
-    - cron: "30 23 * * *"
-    - cron: "0 0 * * *"
     - cron: "30 0 * * *"
-    - cron: "0 1 * * *"
     - cron: "30 1 * * *"
-    - cron: "30 2 * * *"
-    - cron: "30 3 * * *"
-    - cron: "0 5 * * *"
-    - cron: "0 7 * * *"
-    - cron: "0 8 * * *"
-    - cron: "30 9 * * *"
-    - cron: "0 11 * * *"
-    - cron: "0 13 * * *"
-    - cron: "0 15 * * *"
-    - cron: "30 16 * * *"
-    - cron: "30 18 * * *"
-    - cron: "30 20 * * *"
+    - cron: "0 3 * * *"
+    - cron: "0 16 * * *"
   workflow_dispatch:
     inputs:
       dry_run:
